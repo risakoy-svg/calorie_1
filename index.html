@@ -3,31 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>BurnCalorie - Full Edit</title>
+  <title>BurnCalorie - Pro Edit</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/vanilla-calendar-pro/build/vanilla-calendar.min.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/vanilla-calendar-pro/build/vanilla-calendar.min.css" rel="stylesheet">
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js')
-        .then(() => console.log('Service Worker Registered'));
-    }
-  </script>
   <style>
     .vanilla-calendar { width: 100% !important; border: none !important; }
     @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
     .animate-slide-up { animation: slide-up 0.3s ease-out; }
-    /* 編集モード時のスタイル */
     .edit-mode-active .edit-badge { display: flex !important; }
     .edit-mode-active .main-btn-circle { opacity: 0.3; filter: grayscale(0.5); }
+    /* 編集シートの高さを確保 */
+    .half-sheet { height: 85vh; overflow-y: auto; }
   </style>
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="BurnCalorie">
-  <link rel="apple-touch-icon" href="icon.png">
-
-<link rel="manifest" href="manifest.json">
 </head>
 <body class="bg-gray-100 flex justify-center text-gray-800">
 
@@ -38,7 +27,7 @@
     </header>
 
     <section class="p-4 bg-blue-50/50 border-b">
-      <h2 class="text-xs text-gray-400 mb-1 font-bold uppercase">Today's Burn</h2>
+      <h2 class="text-xs text-gray-400 mb-1 font-bold uppercase">今日の消費カロリー</h2>
       <div class="text-3xl font-black text-blue-600 mb-3"><span id="todayTotal">0</span> <span class="text-sm font-normal text-gray-400">kcal</span></div>
       <div class="h-32 w-full bg-white p-2 rounded-xl border border-blue-100 shadow-sm">
         <canvas id="weeklyChart"></canvas>
@@ -50,7 +39,6 @@
         アクティビティを記録
         <span id="editStatusBadge" class="hidden text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">編集モード中</span>
       </h2>
-      
       <div id="buttonGrid" class="grid grid-cols-3 gap-y-12 gap-x-4 text-center items-start">
         <div id="controlButtons" class="contents">
           <div id="addBtnBox" class="flex flex-col items-center">
@@ -70,7 +58,6 @@
     <div id="patternModal" class="fixed inset-0 bg-black/50 z-40 flex items-center justify-center hidden p-4">
       <div class="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl overflow-y-auto max-h-[90vh]">
         <h3 id="modalTitle" class="text-lg font-bold mb-4">アクティビティ設定</h3>
-        <label class="text-xs text-gray-400 font-bold mb-2 block uppercase">アイコン選択</label>
         <div id="iconSelectionGrid" class="grid grid-cols-4 gap-2 mb-4 p-2 bg-gray-50 rounded-xl border"></div>
         <div class="space-y-3">
           <input id="inputName" type="text" placeholder="なまえ" class="w-full border p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500">
@@ -87,33 +74,34 @@
     </div>
 
     <div id="calendarModal" class="fixed inset-0 bg-black/50 z-50 flex items-end justify-center hidden">
-        <div class="bg-white rounded-t-3xl w-full max-w-md p-6 shadow-2xl animate-slide-up">
+        <div class="bg-white rounded-t-3xl w-full max-w-md p-6 shadow-2xl animate-slide-up half-sheet">
           <div class="flex justify-between items-center mb-4 border-b pb-2">
-            <h3 class="text-lg font-bold text-blue-600 font-black">HISTORY</h3>
+            <h3 class="text-lg font-bold text-blue-600 font-black">履歴と編集</h3>
             <button onclick="toggleCalendarModal(false)" class="text-gray-400 text-2xl p-2">✕</button>
           </div>
           <div id="calendar" class="mb-4"></div>
-          <div class="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center gap-3">
-            <div class="flex-1">
-              <p id="selectedDateText" class="text-[10px] text-gray-400 font-bold">DATE</p>
-              <input id="editKcalInput" type="number" class="w-full text-2xl font-black text-blue-600 bg-transparent outline-none">
-            </div>
-            <button onclick="saveEditCalorie()" class="bg-blue-600 text-white font-bold py-3 px-6 rounded-xl shadow-md">保存</button>
+          
+          <div class="mt-4">
+            <p id="selectedDateText" class="text-xs text-gray-400 font-bold mb-3">日付を選択してください</p>
+            <div id="dailyDetailList" class="space-y-2 mb-20">
+              </div>
           </div>
         </div>
       </div>
   </div>
 
   <script>
-    const HISTORY_KEY = 'burn_cal_hist_v9';
-    const PATTERN_KEY = 'burn_cal_patt_v9';
+    const HISTORY_KEY = 'burn_cal_hist_v10';
+    const PATTERN_KEY = 'burn_cal_patt_v10';
+    const DETAIL_KEY = 'burn_cal_detail_v10'; // 内訳保存用
+    
     const getTodayStr = (date = new Date()) => {
         const d = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
         return d.toISOString().split('T')[0];
     };
     
     let calorieHistory = JSON.parse(localStorage.getItem(HISTORY_KEY)) || {};
-    // 初期状態でランニングを入れておく
+    let dailyDetails = JSON.parse(localStorage.getItem(DETAIL_KEY)) || {}; 
     let myPatterns = JSON.parse(localStorage.getItem(PATTERN_KEY)) || [
         { id: 'fixed-1', emoji: '🏃', name: 'ランニング', kcal: 300, min: 30 }
     ];
@@ -123,7 +111,7 @@
     let isEditMode = false;
     let editingPatternId = null;
 
-    // グラフ
+    // グラフ初期化
     const ctx = document.getElementById('weeklyChart').getContext('2d');
     const myChart = new Chart(ctx, {
       type: 'bar',
@@ -147,12 +135,11 @@
       document.getElementById('todayTotal').innerText = calorieHistory[todayStr] || 0;
     }
 
-    // アイコンリスト
+    // アイコン選択時に名前を自動入力
     const emojiList = [
       {e:'🚶', n:'歩く'}, {e:'🏃', n:'走る'}, {e:'🧹', n:'掃除'}, {e:'🚲', n:'自転車'},
       {e:'🧘', n:'ヨガ'}, {e:'🏋️', n:'筋トレ'}, {e:'🏊', n:'泳ぐ'}, {e:'💃', n:'ダンス'},
-      {e:'🎤', n:'歌う'}, {e:'🥊', n:'ボクシング'}, {e:'🧗', n:'登る'}, {e:'🛀', n:'入浴'},
-      {e:'🧖', n:'サウナ'}, {e:'🧼', n:'洗濯'}, {e:'🏀', n:'バスケ'}, {e:'🎾', n:'テニス'}
+      {e:'🎤', n:'歌う'}, {e:'🥊', n:'ボクシング'}, {e:'🧗', n:'登る'}, {e:'🛀', n:'入浴'}
     ];
     const iGrid = document.getElementById('iconSelectionGrid');
     emojiList.forEach(item => {
@@ -163,37 +150,94 @@
         Array.from(iGrid.children).forEach(el => el.classList.remove('bg-blue-100', 'border-blue-500'));
         b.classList.add('bg-blue-100', 'border-blue-500');
         selectedEmoji = item.e;
+        // ★自動入力機能
+        if(!editingPatternId) document.getElementById('inputName').value = item.n;
       };
       iGrid.appendChild(b);
     });
 
+    function addCalorie(p) {
+      const kcal = parseInt(p.kcal);
+      calorieHistory[todayStr] = (calorieHistory[todayStr] || 0) + kcal;
+      
+      if(!dailyDetails[todayStr]) dailyDetails[todayStr] = [];
+      dailyDetails[todayStr].push({ id: Date.now(), emoji: p.emoji, name: p.name, kcal: kcal, min: p.min });
+      
+      saveData();
+    }
+
+    function saveData() {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(calorieHistory));
+      localStorage.setItem(DETAIL_KEY, JSON.stringify(dailyDetails));
+      updateUI();
+    }
+
+    // 履歴の内訳を表示・編集
+    function renderDailyDetails(date) {
+      const listDiv = document.getElementById('dailyDetailList');
+      listDiv.innerHTML = '';
+      const items = dailyDetails[date] || [];
+      
+      if(items.length === 0) {
+        listDiv.innerHTML = '<p class="text-gray-400 text-center py-8">記録がありません</p>';
+        return;
+      }
+
+      items.forEach((item, index) => {
+        const row = document.createElement('div');
+        row.className = "flex items-center gap-3 bg-white p-3 rounded-2xl border shadow-sm";
+        row.innerHTML = `
+          <span class="text-2xl">${item.emoji}</span>
+          <div class="flex-1">
+            <p class="text-xs font-bold">${item.name}</p>
+            <p class="text-[10px] text-gray-400">${item.min}分</p>
+          </div>
+          <input type="number" value="${item.kcal}" onchange="updateItemKcal('${date}', ${index}, this.value)" class="w-16 text-right font-bold text-blue-600 outline-none">
+          <span class="text-[10px] text-gray-400">kcal</span>
+          <button onclick="deleteDetailItem('${date}', ${index})" class="ml-2 text-red-400">✕</button>
+        `;
+        listDiv.appendChild(row);
+      });
+    }
+
+    function updateItemKcal(date, index, newVal) {
+      dailyDetails[date][index].kcal = parseInt(newVal) || 0;
+      recalcDayTotal(date);
+      saveData();
+    }
+
+    function deleteDetailItem(date, index) {
+      dailyDetails[date].splice(index, 1);
+      recalcDayTotal(date);
+      saveData();
+      renderDailyDetails(date);
+    }
+
+    function recalcDayTotal(date) {
+      const total = (dailyDetails[date] || []).reduce((sum, i) => sum + i.kcal, 0);
+      calorieHistory[date] = total;
+    }
+
+    // --- その他基本機能 ---
     function toggleEditMode() {
       isEditMode = !isEditMode;
       const container = document.getElementById('appContainer');
-      const masterBtn = document.getElementById('masterEditBtn');
-      const icon = document.getElementById('editBtnIcon');
-      const label = document.getElementById('editBtnLabel');
       const badge = document.getElementById('editStatusBadge');
       const addBtnBox = document.getElementById('addBtnBox');
-
+      const masterBtn = document.getElementById('masterEditBtn');
+      
       if (isEditMode) {
         container.classList.add('edit-mode-active');
-        masterBtn.classList.replace('bg-gray-50', 'bg-blue-600');
-        masterBtn.classList.replace('text-gray-400', 'text-white');
-        icon.innerText = '✓';
-        label.innerText = '完了';
-        label.classList.replace('text-gray-400', 'text-blue-600');
         badge.classList.remove('hidden');
         addBtnBox.classList.add('opacity-10', 'pointer-events-none');
+        masterBtn.classList.replace('bg-gray-50', 'bg-blue-600');
+        document.getElementById('editBtnIcon').innerText = '✓';
       } else {
         container.classList.remove('edit-mode-active');
-        masterBtn.classList.replace('bg-blue-600', 'bg-gray-50');
-        masterBtn.classList.replace('text-white', 'text-gray-400');
-        icon.innerText = '✎';
-        label.innerText = '編集・削除';
-        label.classList.replace('text-blue-600', 'text-gray-400');
         badge.classList.add('hidden');
         addBtnBox.classList.remove('opacity-10', 'pointer-events-none');
+        masterBtn.classList.replace('bg-blue-600', 'bg-gray-50');
+        document.getElementById('editBtnIcon').innerText = '✎';
       }
     }
 
@@ -212,11 +256,6 @@
       document.getElementById('inputMin').value = p.min;
       document.getElementById('inputKcal').value = p.kcal;
       selectedEmoji = p.emoji;
-      // アイコン選択状態の反映
-      Array.from(iGrid.children).forEach(el => {
-          el.classList.remove('bg-blue-100', 'border-blue-500');
-          if(el.querySelector('.text-2xl').innerText === p.emoji) el.classList.add('bg-blue-100', 'border-blue-500');
-      });
       togglePatternModal(true);
     }
 
@@ -238,7 +277,7 @@
     }
 
     function deletePattern(id) {
-      if(confirm('このアクティビティを削除しますか？')) {
+      if(confirm('削除しますか？')) {
         myPatterns = myPatterns.filter(x => x.id !== id);
         localStorage.setItem(PATTERN_KEY, JSON.stringify(myPatterns));
         renderButtons();
@@ -252,9 +291,7 @@
         const div = document.createElement('div');
         div.className = "relative flex flex-col items-center dynamic-item";
         div.innerHTML = `
-          <button onclick="if(!isEditMode) addCalorie(${p.kcal})" class="main-btn-circle w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center text-3xl shadow-sm active:scale-95 transition-all">
-            ${p.emoji}
-          </button>
+          <button onclick="if(!isEditMode) addCalorie(${JSON.stringify(p).replace(/"/g, '&quot;')})" class="main-btn-circle w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center text-3xl shadow-sm active:scale-95 transition-all">${p.emoji}</button>
           <span class="text-xs mt-2 font-bold text-gray-700">${p.name}</span>
           <span class="text-[10px] text-gray-400 mt-1">${p.min}分/${p.kcal}kcal</span>
           <button onclick="deletePattern('${p.id}')" class="edit-badge hidden absolute -top-1 -left-1 bg-red-500 text-white w-7 h-7 rounded-full text-[10px] font-bold items-center justify-center shadow-lg border-2 border-white">✕</button>
@@ -274,8 +311,6 @@
 
     function togglePatternModal(s) { document.getElementById('patternModal').classList.toggle('hidden', !s); }
     function closePatternModal() { togglePatternModal(false); }
-    function addCalorie(k) { calorieHistory[todayStr] = (calorieHistory[todayStr] || 0) + k; saveHistory(); }
-    function saveHistory() { localStorage.setItem(HISTORY_KEY, JSON.stringify(calorieHistory)); updateUI(); }
     
     let calendar;
     function toggleCalendarModal(s) {
@@ -285,17 +320,13 @@
             settings: { lang: 'ja', selection: { day: 'single' } },
             actions: { clickDay(e, self) {
                 selectedDate = self.selectedDates[0];
-                document.getElementById('selectedDateText').innerText = selectedDate + " EDIT";
-                document.getElementById('editKcalInput').value = calorieHistory[selectedDate] || 0;
+                document.getElementById('selectedDateText').innerText = selectedDate + " の内訳";
+                renderDailyDetails(selectedDate);
             }}
         });
         calendar.init();
       }
-    }
-    function saveEditCalorie() {
-      calorieHistory[selectedDate] = parseInt(document.getElementById('editKcalInput').value) || 0;
-      saveHistory();
-      alert('保存しました！');
+      if(s) renderDailyDetails(selectedDate || todayStr);
     }
 
     renderButtons();
